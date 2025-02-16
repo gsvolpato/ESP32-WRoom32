@@ -1,0 +1,95 @@
+#include <TFT_eSPI.h>
+#include <SPI.h>
+#include "skull_logo.h"  // Include the header file for the logo
+
+// Pin definitions
+#define TFT_CS     17
+#define TFT_RST    4
+#define TFT_DC     16
+#define TFT_SCLK   15
+#define TFT_MOSI   2
+#define TFT_BLK    5
+#define BUTTON_PIN 0  // Assuming boot button is connected to GPIO 0
+
+// Screen dimensions
+#define SCREEN_WIDTH  160
+#define SCREEN_HEIGHT 80
+
+// Create display object
+TFT_eSPI tft = TFT_eSPI();
+
+// Define rainbow colors
+#define TFT_INDIGO 0x4810  // Define a custom color for indigo
+uint16_t rainbowColors[] = {TFT_RED, TFT_ORANGE, TFT_YELLOW, TFT_GREEN, TFT_BLUE, TFT_INDIGO, TFT_VIOLET};
+int colorIndex = 0;
+
+// Forward declaration of drawScreen
+void drawScreen();
+void drawGradient();
+
+void setup() {
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  tft.init();
+  tft.setRotation(3);  // Rotate display 270 degrees
+  tft.fillScreen(TFT_BLACK);
+  drawScreen();
+}
+
+void loop() {
+  if (digitalRead(BUTTON_PIN) == LOW) {
+    delay(200);  // Debounce delay
+    colorIndex = (colorIndex + 1) % (sizeof(rainbowColors) / sizeof(rainbowColors[0]));
+    drawScreen();
+  }
+}
+
+void drawScreen() {
+  uint16_t currentColor = rainbowColors[colorIndex];
+
+  tft.fillScreen(TFT_BLACK);
+
+  // Draw the skull logo
+  tft.drawBitmap((SCREEN_WIDTH - 160) / 2, (SCREEN_HEIGHT - 80) / 2, skull_logo, 160, 80, currentColor);
+
+  // Draw the color gradient
+  drawGradient();
+}
+
+void drawGradient() {
+  for (int x = 0; x < SCREEN_WIDTH; x++) {
+    float position = (float)x / SCREEN_WIDTH;
+    uint8_t red, green, blue;
+
+    if (position < 1.0 / 6.0) {
+      red = 255;
+      green = position * 6 * 255;
+      blue = 0;
+    } else if (position < 2.0 / 6.0) {
+      red = (1 - (position - 1.0 / 6.0) * 6) * 255;
+      green = 255;
+      blue = 0;
+    } else if (position < 3.0 / 6.0) {
+      red = 0;
+      green = 255;
+      blue = (position - 2.0 / 6.0) * 6 * 255;
+    } else if (position < 4.0 / 6.0) {
+      red = 0;
+      green = (1 - (position - 3.0 / 6.0) * 6) * 255;
+      blue = 255;
+    } else if (position < 5.0 / 6.0) {
+      red = (position - 4.0 / 6.0) * 6 * 255;
+      green = 0;
+      blue = 255;
+    } else {
+      red = 255;
+      green = 0;
+      blue = (1 - (position - 5.0 / 6.0) * 6) * 255;
+    }
+
+    // Combine the colors into a 16-bit color value
+    uint16_t color = tft.color565(red, green, blue);
+
+    // Draw a vertical line with the calculated color
+    tft.drawFastVLine(x, 0, SCREEN_HEIGHT, color);
+  }
+}
