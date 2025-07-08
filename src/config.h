@@ -1,0 +1,19 @@
+#define DISABLE_ALL_LIBRARY_WARNINGS
+#ifndef CONFIG_H
+#define CONFIG_H
+
+// WiFi Configuration
+#define WIFI_SSID "AP Bridge"
+#define WIFI_PASSWORD "batatafrita"
+
+// Google Form Configuration
+// See README.md for detailed setup instructions
+#define GOOGLE_FORM_URL "https://docs.google.com/forms/d/e/1FAIpQLSf7dXbCiHyh3ly6I7CB5eBwJ6xFrURzxanoUyWUEUWENTF7og/formResponse"
+#define UID_FIELD_ID "entry.1386724954"
+#define TYPE_FIELD_ID "entry.2018106520"
+#define USER_FIELD_ID "entry.1761816552"
+
+// User Configuration
+#define DEVICE_USER_NAME "ESP32-WROOM32-Device"
+
+#endif 
