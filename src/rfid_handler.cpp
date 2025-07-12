@@ -1,112 +1,147 @@
 #include "rfid_handler.h"
 
 RFIDHandler::RFIDHandler() {
-    rfid = new MFRC522(SS_PIN, RST_PIN);
+    nfc = new Adafruit_PN532(SDA_PIN, SCL_PIN);
     lastCardUID = "";
     lastScanTime = 0;
+    currentUIDLength = 0;
+    memset(currentUID, 0, sizeof(currentUID));
 }
 
 bool RFIDHandler::initialize() {
-    SPI.begin(PIN_RF_SCK, PIN_RF_MISO, PIN_RF_MOSI, SS_PIN);
-    rfid->PCD_Init();
-    delay(10);
+    nfc->begin();
     
-    byte v = rfid->PCD_ReadRegister(rfid->VersionReg);
-    Serial.print(F("MFRC522 Software Version: 0x"));
-    Serial.println(v, HEX);
-    
-    if (v == 0x00 || v == 0xFF) {
-        Serial.println(F("Warning: Communication failure, is the MFRC522 properly connected?"));
+    uint32_t versiondata = nfc->getFirmwareVersion();
+    if (!versiondata) {
+        Serial.println("Warning: Didn't find PN53x board");
         return false;
-    } else {
-        rfid->PCD_SetAntennaGain(rfid->RxGain_max);
-        Serial.println(F("RFID Reader initialized successfully."));
-        return true;
     }
+    
+    Serial.print("Found chip PN5"); Serial.println((versiondata>>24) & 0xFF, HEX); 
+    Serial.print("Firmware ver. "); Serial.print((versiondata>>16) & 0xFF, DEC); 
+    Serial.print('.'); Serial.println((versiondata>>8) & 0xFF, DEC);
+    
+    nfc->SAMConfig();
+    Serial.println("PN532 NFC/RFID Reader initialized successfully.");
+    return true;
 }
 
 bool RFIDHandler::isNewCardPresent() {
-    return rfid->PICC_IsNewCardPresent() && rfid->PICC_ReadCardSerial();
+    uint8_t uid[] = { 0, 0, 0, 0, 0, 0, 0 };
+    uint8_t uidLength;
+    
+    return nfc->readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength, 100);
+}
+
+String RFIDHandler::readBlockAsText(byte blockAddr) {
+    uint8_t data[16];
+    uint8_t keya[6] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
+    
+    uint8_t success = nfc->mifareclassic_AuthenticateBlock(currentUID, currentUIDLength, (uint32_t)blockAddr, 0, keya);
+    if (!success) {
+        Serial.print(F("Auth failed for block "));
+        Serial.println(blockAddr);
+        return "";
+    }
+    
+    success = nfc->mifareclassic_ReadDataBlock(blockAddr, data);
+    if (!success) {
+        Serial.print(F("Read failed for block "));
+        Serial.println(blockAddr);
+        return "";
+    }
+    
+    String text = "";
+    for (byte i = 0; i < 16; i++) {
+        if (data[i] != 0x00 && data[i] >= 32 && data[i] <= 126) {
+            text += (char)data[i];
+        } else if (data[i] == 0x00) {
+            break;
+        }
+    }
+    
+    text.trim();
+    return text;
 }
 
 CardInfo RFIDHandler::readCard() {
     CardInfo cardInfo;
     cardInfo.isValid = false;
     
-    if (!isNewCardPresent()) {
+    uint8_t uid[] = { 0, 0, 0, 0, 0, 0, 0 };
+    uint8_t uidLength;
+    
+    bool success = nfc->readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength, 100);
+    if (!success) {
         return cardInfo;
     }
     
-    String uid = "";
-    for (byte i = 0; i < rfid->uid.size; i++) {
-        uid += (rfid->uid.uidByte[i] < 0x10 ? "0" : "");
-        uid += String(rfid->uid.uidByte[i], HEX);
-        if (i < rfid->uid.size - 1) {
-            uid += ":";
+    memcpy(currentUID, uid, uidLength);
+    currentUIDLength = uidLength;
+    
+    String uidString = "";
+    for (uint8_t i = 0; i < uidLength; i++) {
+        uidString += (uid[i] < 0x10 ? "0" : "");
+        uidString += String(uid[i], HEX);
+        if (i < uidLength - 1) {
+            uidString += ":";
         }
     }
-    uid.toUpperCase();
+    uidString.toUpperCase();
     
-    if (uid == lastCardUID && (millis() - lastScanTime < SCAN_COOLDOWN)) {
+    if (uidString == lastCardUID && (millis() - lastScanTime < SCAN_COOLDOWN)) {
         return cardInfo;
     }
     
-    lastCardUID = uid;
+    lastCardUID = uidString;
     lastScanTime = millis();
     
-    cardInfo.uid = uid;
-    cardInfo.type = getCardType(rfid->PICC_GetType(rfid->uid.sak));
+    cardInfo.uid = uidString;
+    cardInfo.type = getCardType(uidLength);
+    
+    Serial.println(F("\n=== Reading Card Data ==="));
+    Serial.print(F("UID: "));
+    Serial.println(cardInfo.uid);
+    Serial.print(F("Type: "));
+    Serial.println(cardInfo.type);
+
+    cardInfo.plate = readBlockAsText(4);
+    Serial.print(F("Plate (Block 4): '"));
+    Serial.print(cardInfo.plate);
+    Serial.println(F("'"));
+
+    cardInfo.vehicle = readBlockAsText(5);
+    Serial.print(F("Vehicle (Block 5): '"));
+    Serial.print(cardInfo.vehicle);
+    Serial.println(F("'"));
+
+    cardInfo.department = readBlockAsText(6);
+    Serial.print(F("Department (Block 6): '"));
+    Serial.print(cardInfo.department);
+    Serial.println(F("'"));
+
+    Serial.println(F("=========================\n"));
+    
     cardInfo.isValid = true;
     
     return cardInfo;
 }
 
 void RFIDHandler::readAllBlocks() {
-    MFRC522::MIFARE_Key key;
-    for (byte i = 0; i < 6; i++) {
-        key.keyByte[i] = 0xFF;
-    }
+    uint8_t keya[6] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
 
     Serial.println(F("\n===================="));
-    Serial.println(F("Card Detected:"));
-    Serial.print(F("Card UID: "));
-    for (byte i = 0; i < rfid->uid.size; i++) {
-        Serial.print(rfid->uid.uidByte[i] < 0x10 ? " 0" : " ");
-        Serial.print(rfid->uid.uidByte[i], HEX);
-    }
-    Serial.println();
-    
-    MFRC522::PICC_Type piccType = rfid->PICC_GetType(rfid->uid.sak);
-    Serial.print(F("PICC Type: "));
-    Serial.println(rfid->PICC_GetTypeName(piccType));
-    Serial.print(F("SAK: 0x"));
-    Serial.println(rfid->uid.sak, HEX);
-    Serial.println();
-
-    if (piccType != MFRC522::PICC_TYPE_MIFARE_MINI &&
-        piccType != MFRC522::PICC_TYPE_MIFARE_1K &&
-        piccType != MFRC522::PICC_TYPE_MIFARE_4K) {
-        Serial.println(F("This sample only works with MIFARE Classic cards."));
-        Serial.println(F("====================\n"));
-        return;
-    }
-
     Serial.println(F("Reading all accessible sectors..."));
     
-    byte numSectors = 16;
-    if (piccType == MFRC522::PICC_TYPE_MIFARE_4K) {
-        numSectors = 40;
-    }
-
-    for (byte sector = 0; sector < numSectors; sector++) {
-        byte trailerBlock = (sector < 32) ? (sector * 4 + 3) : (32 * 4 + (sector - 32) * 16 + 15);
+    for (uint8_t sector = 0; sector < 16; sector++) {
+        uint8_t firstBlock = sector * 4;
+        uint8_t trailerBlock = sector * 4 + 3;
         
-        MFRC522::StatusCode status = rfid->PCD_Authenticate(MFRC522::PICC_CMD_MF_AUTH_KEY_A, trailerBlock, &key, &(rfid->uid));
-        if (status != MFRC522::STATUS_OK) {
+        uint8_t success = nfc->mifareclassic_AuthenticateBlock(currentUID, currentUIDLength, (uint32_t)trailerBlock, 0, keya);
+        if (!success) {
             Serial.print(F("Sector "));
             Serial.print(sector);
-            Serial.print(F(" - Auth failed: "));
-            Serial.println(rfid->GetStatusCodeName(status));
+            Serial.println(F(" - Auth failed"));
             continue;
         }
 
@@ -114,19 +149,13 @@ void RFIDHandler::readAllBlocks() {
         Serial.print(sector);
         Serial.println(F(":"));
 
-        byte firstBlock = (sector < 32) ? (sector * 4) : (32 * 4 + (sector - 32) * 16);
-        byte lastBlock = (sector < 32) ? (sector * 4 + 2) : (32 * 4 + (sector - 32) * 16 + 14);
-
-        for (byte blockAddr = firstBlock; blockAddr <= lastBlock; blockAddr++) {
-            byte buffer[18];
-            byte size = sizeof(buffer);
-            
-            status = rfid->MIFARE_Read(blockAddr, buffer, &size);
-            if (status != MFRC522::STATUS_OK) {
+        for (uint8_t blockAddr = firstBlock; blockAddr < trailerBlock; blockAddr++) {
+            uint8_t data[16];
+            success = nfc->mifareclassic_ReadDataBlock(blockAddr, data);
+            if (!success) {
                 Serial.print(F("  Block "));
                 Serial.print(blockAddr);
-                Serial.print(F(" read failed: "));
-                Serial.println(rfid->GetStatusCodeName(status));
+                Serial.println(F(" read failed"));
                 continue;
             }
 
@@ -134,14 +163,14 @@ void RFIDHandler::readAllBlocks() {
             Serial.print(blockAddr);
             Serial.print(F(": "));
             
-            for (byte i = 0; i < 16; i++) {
-                Serial.print(buffer[i] < 0x10 ? " 0" : " ");
-                Serial.print(buffer[i], HEX);
+            for (uint8_t i = 0; i < 16; i++) {
+                Serial.print(data[i] < 0x10 ? " 0" : " ");
+                Serial.print(data[i], HEX);
             }
             
             Serial.print(F(" | "));
-            for (byte i = 0; i < 16; i++) {
-                char c = buffer[i];
+            for (uint8_t i = 0; i < 16; i++) {
+                char c = data[i];
                 Serial.print((c >= 32 && c <= 126) ? c : '.');
             }
             Serial.println();
@@ -150,13 +179,12 @@ void RFIDHandler::readAllBlocks() {
         Serial.print(F("  Trailer Block "));
         Serial.print(trailerBlock);
         Serial.print(F(": "));
-        byte buffer[18];
-        byte size = sizeof(buffer);
-        status = rfid->MIFARE_Read(trailerBlock, buffer, &size);
-        if (status == MFRC522::STATUS_OK) {
-            for (byte i = 0; i < 16; i++) {
-                Serial.print(buffer[i] < 0x10 ? " 0" : " ");
-                Serial.print(buffer[i], HEX);
+        uint8_t data[16];
+        success = nfc->mifareclassic_ReadDataBlock(trailerBlock, data);
+        if (success) {
+            for (uint8_t i = 0; i < 16; i++) {
+                Serial.print(data[i] < 0x10 ? " 0" : " ");
+                Serial.print(data[i], HEX);
             }
             Serial.println(F(" [ACCESS BITS]"));
         } else {
@@ -166,19 +194,14 @@ void RFIDHandler::readAllBlocks() {
     }
 
     Serial.println(F("====================\n"));
-    rfid->PICC_HaltA();
-    rfid->PCD_StopCrypto1();
 }
 
-String RFIDHandler::getCardType(MFRC522::PICC_Type piccType) {
-    switch (piccType) {
-        case MFRC522::PICC_TYPE_MIFARE_MINI:  return "MIFARE Mini";
-        case MFRC522::PICC_TYPE_MIFARE_1K:    return "MIFARE 1K";
-        case MFRC522::PICC_TYPE_MIFARE_4K:    return "MIFARE 4K";
-        case MFRC522::PICC_TYPE_MIFARE_UL:    return "MIFARE Ultralight";
-        case MFRC522::PICC_TYPE_ISO_14443_4:  return "ISO 14443-4";
-        case MFRC522::PICC_TYPE_ISO_18092:    return "ISO 18092";
-        default:                               return "Unknown";
+String RFIDHandler::getCardType(uint8_t uidLength) {
+    switch (uidLength) {
+        case 4:  return "MIFARE Classic 1K";
+        case 7:  return "MIFARE Classic 4K";
+        case 10: return "MIFARE DESFire";
+        default: return "Unknown NFC/RFID";
     }
 }
 

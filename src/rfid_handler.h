@@ -2,21 +2,26 @@
 #define RFID_HANDLER_H
 
 #include <Arduino.h>
-#include <SPI.h>
-#include <MFRC522.h>
+#include <Wire.h>
+#include <Adafruit_PN532.h>
 #include "GPIOS.h"
 
 struct CardInfo {
     String uid;
     String type;
+    String plate;
+    String vehicle;
+    String department;
     bool isValid;
 };
 
 class RFIDHandler {
 private:
-    MFRC522* rfid;
+    Adafruit_PN532* nfc;
     String lastCardUID;
     unsigned long lastScanTime;
+    uint8_t currentUID[7];
+    uint8_t currentUIDLength;
     static const unsigned long SCAN_COOLDOWN = 2000;
 
 public:
@@ -25,7 +30,8 @@ public:
     bool isNewCardPresent();
     CardInfo readCard();
     void readAllBlocks();
-    String getCardType(MFRC522::PICC_Type piccType);
+    String readBlockAsText(byte blockAddr);
+    String getCardType(uint8_t cardType);
     void dumpByteArray(byte *buffer, byte bufferSize);
 };
 

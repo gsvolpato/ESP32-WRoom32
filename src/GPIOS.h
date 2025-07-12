@@ -2,14 +2,8 @@
 #ifndef GPIOS_H
 #define GPIOS_H
 
-//| RF Modules SPI Pins for ESP32 WROOM 32
-#define PIN_RF_MISO 26  // MISO pin for RFID
-#define PIN_RF_MOSI 27  // MOSI pin for RFID
-#define PIN_RF_SCK 14   // SCK pin for RFID
-
-//| RC522 RFID Module Pins
-#define RST_PIN 32      // RC522 RST pin
-#define SS_PIN 12       // RC522 SDA (SS) pin
-#define IRQ_PIN 25      // RC522 IRQ pin
+//| I2C Pins for PN532 NFC/RFID Module
+#define SDA_PIN 32      // I2C SDA pin for PN532
+#define SCL_PIN 33      // I2C SCL pin for PN532
 
 #endif // GPIOS_H
