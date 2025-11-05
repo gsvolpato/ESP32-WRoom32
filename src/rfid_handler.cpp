@@ -257,28 +257,10 @@ CardInfo RFIDHandler::readCard() {
     cardInfo.uid = uidString;
     cardInfo.type = getCardType(uidLength);
     
-    Serial.println(F("\n=== Reading Card Data ==="));
-    Serial.print(F("UID: "));
-    Serial.println(cardInfo.uid);
-    Serial.print(F("Type: "));
-    Serial.println(cardInfo.type);
-
+    // Read blocks without Serial prints for speed
     cardInfo.plate = readBlockAsText(4);
-    Serial.print(F("Plate (Block 4): '"));
-    Serial.print(cardInfo.plate);
-    Serial.println(F("'"));
-
     cardInfo.vehicle = readBlockAsText(5);
-    Serial.print(F("Vehicle (Block 5): '"));
-    Serial.print(cardInfo.vehicle);
-    Serial.println(F("'"));
-
     cardInfo.department = readBlockAsText(6);
-    Serial.print(F("Department (Block 6): '"));
-    Serial.print(cardInfo.department);
-    Serial.println(F("'"));
-
-    Serial.println(F("=========================\n"));
     
     cardInfo.isValid = true;
     

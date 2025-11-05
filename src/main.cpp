@@ -10,7 +10,10 @@ PostgresHandler postgresHandler(WIFI_SSID, WIFI_PASSWORD, POSTGRES_API_URL);
 
 void setup() {
     Serial.begin(115200);
-    delay(1000);
+    
+    // Initialize onboard LED
+    pinMode(LED_PIN, OUTPUT);
+    digitalWrite(LED_PIN, LOW); // Start with LED off (waiting state)
     
     Serial.println("\n========================================");
     Serial.println("ESP32 WROOM 32 - PN532 NFC/RFID Reader");
@@ -46,13 +49,24 @@ void setup() {
 void loop() {
     // Try to initialize if not already done
     if (!rfidHandler.isInitialized()) {
-        delay(1000); // Wait before retry
+        digitalWrite(LED_PIN, LOW); // LED off while waiting for initialization
         return;
     }
     
     CardInfo cardInfo = rfidHandler.readCard();
     
     if (cardInfo.isValid) {
+        // Turn LED ON when card is detected
+        digitalWrite(LED_PIN, HIGH);
+        
+        // Send to PostgreSQL IMMEDIATELY after reading (before Serial prints)
+        bool sendSuccess = false;
+        if (postgresHandler.isWiFiConnected()) {
+            sendSuccess = postgresHandler.sendCardData(cardInfo.uid, cardInfo.type, DEVICE_LOCATION,
+                                                     cardInfo.plate, cardInfo.vehicle, cardInfo.department);
+        }
+        
+        // Print to Serial after sending (non-blocking)
         Serial.println("\n--- Card Detected ---");
         Serial.print("UID: ");
         Serial.println(cardInfo.uid);
@@ -72,21 +86,21 @@ void loop() {
             Serial.println(cardInfo.department);
         }
         
-        // Send to PostgreSQL if WiFi connected
         if (postgresHandler.isWiFiConnected()) {
-            Serial.print("Sending to PostgreSQL... ");
-            if (postgresHandler.sendCardData(cardInfo.uid, cardInfo.type, DEVICE_LOCATION,
-                                           cardInfo.plate, cardInfo.vehicle, cardInfo.department)) {
-                Serial.println("OK");
-            } else {
-                Serial.println("FAILED");
-            }
+            Serial.print("PostgreSQL: ");
+            Serial.println(sendSuccess ? "OK" : "FAILED");
         } else {
             Serial.println("WiFi not connected - data not sent");
         }
         
         Serial.println("Ready for next card...\n");
+        
+        // Turn LED OFF immediately after sending
+        digitalWrite(LED_PIN, LOW);
+    } else {
+        // No card detected - LED OFF (waiting state)
+        digitalWrite(LED_PIN, LOW);
     }
     
-    delay(100);
+    delay(50); // Reduced delay for faster scanning
 }
