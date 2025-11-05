@@ -6,14 +6,11 @@
 #define WIFI_SSID "YOUR_WIFI_SSID"
 #define WIFI_PASSWORD "YOUR_WIFI_PASSWORD"
 
-// Google Form Configuration
-// See README.md for detailed setup instructions
-#define GOOGLE_FORM_URL "https://docs.google.com/forms/d/e/1FAIpQLSf7dXbCiHyh3ly6I7CB5eBwJ6xFrURzxanoUyWUEUWENTF7og/formResponse"
-#define UID_FIELD_ID "entry.1386724954"
-#define TYPE_FIELD_ID "entry.2018106520"
-#define USER_FIELD_ID "entry.1761816552"
+// PostgreSQL API Configuration
+// Replace with your backend API URL that handles PostgreSQL insertion
+#define POSTGRES_API_URL "http://your-api-server.com/api/rfid-readings"
 
-// User Configuration
-#define DEVICE_USER_NAME "ESP32-WROOM32-Device"
+// Device Configuration
+#define DEVICE_LOCATION "ESP32-WROOM32-Device"
 
 #endif 
