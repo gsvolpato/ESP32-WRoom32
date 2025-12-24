@@ -1,28 +1,54 @@
 #include "rfid_handler.h"
 
 RFIDHandler::RFIDHandler() {
+    Serial.println("🔄 Creating PN532 handler...");
+    Serial.print("📌 Using I2C mode with SDA=");
+    Serial.print(SDA_PIN);
+    Serial.print(", SCL=");
+    Serial.println(SCL_PIN);
+    
     nfc = new Adafruit_PN532(SDA_PIN, SCL_PIN);
     lastCardUID = "";
     lastScanTime = 0;
     currentUIDLength = 0;
     memset(currentUID, 0, sizeof(currentUID));
+    
+    Serial.println("✅ PN532 handler created successfully");
 }
 
 bool RFIDHandler::initialize() {
+    Serial.println("🔄 Starting PN532 initialization...");
+    Serial.print("📌 I2C SDA Pin: ");
+    Serial.println(SDA_PIN);
+    Serial.print("📌 I2C SCL Pin: ");
+    Serial.println(SCL_PIN);
+    
+    Serial.println("🔄 Initializing I2C communication...");
     nfc->begin();
     
+    Serial.println("🔄 Attempting to get firmware version...");
     uint32_t versiondata = nfc->getFirmwareVersion();
     if (!versiondata) {
-        Serial.println("Warning: Didn't find PN53x board");
+        Serial.println("❌ Warning: Didn't find PN53x board");
+        Serial.println("❌ Possible causes:");
+        Serial.println("   - I2C wiring incorrect (SDA/SCL swapped?)");
+        Serial.println("   - PN532 not powered (check 3.3V/5V)");
+        Serial.println("   - I2C address conflict");
+        Serial.println("   - Faulty PN532 module");
+        Serial.println("   - I2C pull-up resistors missing");
         return false;
     }
     
-    Serial.print("Found chip PN5"); Serial.println((versiondata>>24) & 0xFF, HEX); 
-    Serial.print("Firmware ver. "); Serial.print((versiondata>>16) & 0xFF, DEC); 
-    Serial.print('.'); Serial.println((versiondata>>8) & 0xFF, DEC);
+    Serial.print("✅ Found chip PN5"); 
+    Serial.println((versiondata>>24) & 0xFF, HEX); 
+    Serial.print("✅ Firmware ver. "); 
+    Serial.print((versiondata>>16) & 0xFF, DEC); 
+    Serial.print('.'); 
+    Serial.println((versiondata>>8) & 0xFF, DEC);
     
+    Serial.println("🔄 Configuring SAM (Security Access Module)...");
     nfc->SAMConfig();
-    Serial.println("PN532 NFC/RFID Reader initialized successfully.");
+    Serial.println("✅ PN532 NFC/RFID Reader initialized successfully.");
     return true;
 }
 
@@ -62,6 +88,42 @@ String RFIDHandler::readBlockAsText(byte blockAddr) {
     
     text.trim();
     return text;
+}
+
+bool RFIDHandler::writeBlockAsText(byte blockAddr, String text) {
+    uint8_t data[16];
+    uint8_t keya[6] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
+    
+    uint8_t success = nfc->mifareclassic_AuthenticateBlock(currentUID, currentUIDLength, (uint32_t)blockAddr, 0, keya);
+    if (!success) {
+        Serial.print(F("Auth failed for block "));
+        Serial.println(blockAddr);
+        return false;
+    }
+    
+    memset(data, 0, 16);
+    
+    if (text.length() > 0) {
+        int len = (text.length() > 15) ? 15 : text.length();
+        for (int i = 0; i < len; i++) {
+            data[i] = text.charAt(i);
+        }
+    }
+    
+    success = nfc->mifareclassic_WriteDataBlock(blockAddr, data);
+    if (!success) {
+        Serial.print(F("Write failed for block "));
+        Serial.println(blockAddr);
+        return false;
+    }
+    
+    Serial.print(F("Successfully wrote to block "));
+    Serial.print(blockAddr);
+    Serial.print(F(": '"));
+    Serial.print(text);
+    Serial.println(F("'"));
+    
+    return true;
 }
 
 CardInfo RFIDHandler::readCard() {

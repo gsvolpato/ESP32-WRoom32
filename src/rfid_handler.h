@@ -31,6 +31,7 @@ public:
     CardInfo readCard();
     void readAllBlocks();
     String readBlockAsText(byte blockAddr);
+    bool writeBlockAsText(byte blockAddr, String text);
     String getCardType(uint8_t cardType);
     void dumpByteArray(byte *buffer, byte bufferSize);
 };

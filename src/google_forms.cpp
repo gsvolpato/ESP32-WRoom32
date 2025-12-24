@@ -2,13 +2,11 @@
 #include "google_forms.h"
 #include "config.h"
 
-GoogleFormsHandler::GoogleFormsHandler(const char* wifiSSID, const char* wifiPassword, 
-                                     const char* googleFormURL, const char* uidField, 
-                                     const char* typeField, const char* locationField,
-                                     const char* plateField, const char* vehicleField,
-                                     const char* departmentField) {
-    ssid = wifiSSID;
-    password = wifiPassword;
+GoogleFormsHandler::GoogleFormsHandler(WiFiHandler* wifi, const char* googleFormURL, 
+                                     const char* uidField, const char* typeField, 
+                                     const char* locationField, const char* plateField, 
+                                     const char* vehicleField, const char* departmentField) {
+    wifiHandler = wifi;
     formURL = googleFormURL;
     uidFieldName = uidField;
     typeFieldName = typeField;
@@ -16,11 +14,22 @@ GoogleFormsHandler::GoogleFormsHandler(const char* wifiSSID, const char* wifiPas
     plateFieldName = plateField;
     vehicleFieldName = vehicleField;
     departmentFieldName = departmentField;
-    wifiConnected = false;
+    
+    Serial.println("🔄 Google Forms Handler initialized");
+    Serial.print("📝 Form URL: ");
+    Serial.println(formURL);
 }
 
 bool GoogleFormsHandler::connectToWiFi() {
-    Serial.println("Connecting to WiFi...");
+    Serial.println("🔄 Starting WiFi connection process...");
+    Serial.print("📶 WiFi mode: ");
+    Serial.println(WiFi.getMode());
+    
+    WiFi.mode(WIFI_STA);
+    Serial.println("📶 WiFi mode set to STA");
+    
+    Serial.print("🔗 Attempting to connect to: ");
+    Serial.println(ssid);
     WiFi.begin(ssid, password);
     
     int attempts = 0;
@@ -28,17 +37,44 @@ bool GoogleFormsHandler::connectToWiFi() {
         delay(500);
         Serial.print(".");
         attempts++;
+        
+        if (attempts % 5 == 0) {
+            Serial.print(" [" + String(attempts) + "/20] Status: ");
+            switch (WiFi.status()) {
+                case WL_IDLE_STATUS: Serial.print("IDLE"); break;
+                case WL_NO_SSID_AVAIL: Serial.print("NO_SSID_AVAIL"); break;
+                case WL_SCAN_COMPLETED: Serial.print("SCAN_COMPLETED"); break;
+                case WL_CONNECTED: Serial.print("CONNECTED"); break;
+                case WL_CONNECT_FAILED: Serial.print("CONNECT_FAILED"); break;
+                case WL_CONNECTION_LOST: Serial.print("CONNECTION_LOST"); break;
+                case WL_DISCONNECTED: Serial.print("DISCONNECTED"); break;
+                default: Serial.print("UNKNOWN"); break;
+            }
+            Serial.println();
+        }
     }
     
     if (WiFi.status() == WL_CONNECTED) {
         wifiConnected = true;
-        Serial.println("\nWiFi connected!");
-        Serial.print("IP address: ");
+        Serial.println("\n✅ WiFi connected successfully!");
+        Serial.print("✅ IP address: ");
         Serial.println(WiFi.localIP());
+        Serial.print("✅ MAC address: ");
+        Serial.println(WiFi.macAddress());
         return true;
     } else {
         wifiConnected = false;
-        Serial.println("\nWiFi connection failed!");
+        Serial.println("\n❌ WiFi connection failed after 20 attempts!");
+        Serial.print("❌ Final status: ");
+        switch (WiFi.status()) {
+            case WL_IDLE_STATUS: Serial.println("IDLE"); break;
+            case WL_NO_SSID_AVAIL: Serial.println("NO_SSID_AVAIL - Check SSID name"); break;
+            case WL_SCAN_COMPLETED: Serial.println("SCAN_COMPLETED"); break;
+            case WL_CONNECT_FAILED: Serial.println("CONNECT_FAILED - Check password"); break;
+            case WL_CONNECTION_LOST: Serial.println("CONNECTION_LOST"); break;
+            case WL_DISCONNECTED: Serial.println("DISCONNECTED"); break;
+            default: Serial.println("UNKNOWN"); break;
+        }
         return false;
     }
 }

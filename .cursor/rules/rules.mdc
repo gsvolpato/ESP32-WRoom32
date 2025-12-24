@@ -1,0 +1,5 @@
+---
+alwaysApply: true
+---
+do not let files be longer than 300 lines
+create separate files to void long files
